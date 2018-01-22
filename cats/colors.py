@@ -6,11 +6,13 @@ from random import randrange
 from colorsys import hls_to_rgb, rgb_to_hls
 from math import ceil
 
-import cats.images
+import cats.color_schemes
+
+scheme = cats.color_schemes.default
 
 
 def random():
-    """Return a random yet curated RGB color as a 3-tuple of int[0, 255]."""
+    """Return a random yet curated RGB color as a 3-tuple of 8bit ints (0, 255)."""
     return tuple(int(round(i * 255, 0)) for i in hls_to_rgb(randrange(0, 360) / 360, randrange(50, 90, 1) / 100, randrange(30, 80, 10) / 100))
 
 

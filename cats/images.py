@@ -10,11 +10,14 @@ import slicerator
 import os
 import skimage.io
 
+from cats import extensions
 
+
+@extensions.append
 class Images(object):
-    """Import and access images folder, bioformats, etc.
+    """Handle multi-dimensinal images/datasets.
 
-    Import is based on PIMS and, as a consequence, all format supported are
+    Import is based on PIMS and, as a consequence, all formats supported are
     those supported by PIMS.
 
     Channels are not supported for now.
@@ -27,27 +30,17 @@ class Images(object):
     Images objects can be pickled and unpickled. If they are unpickled in the
     absence of the source of the images, the user will, of course, not be able
     to access the images themselves, but will still be able to use the object.
-    Notably, the 'shape' attribute will still be usable. If one brings the
-    source back, one can use the 'reload' method to reload the object with
-    the images.
-
-    Examples of acceptable syntax:
-    Images[0]  # Get the first frame
-    Images[0, 5:10, 10:60]  # Get the first frame, between pixels 5 and 10 in y
-                              and pixels 10 and 60 in x
-    Images[:, :, :256]  # Get all images, truncated in x until pixel 256
-    Images[::10]  # To get one out of ten images
+    If one brings the source back, one can use the 'reload' method to reload
+    the object with the images.
 
     Parameters:
     -----------
     images: str, pims or cats.Images object
         The images to read. Can be a path, readable by `pims.open()`, or an object with images already loaded.
-    frames: slice
-        The limits on the frames to use. Frame 0 will be equal to the beginning of the slice.
-    y: slice
-        The limits on the pixels to use in the y axis.
-    x: slice
-        The limits on the pixels to use in the x axis.
+    frames: slice, list, numpy array...
+        The frames to use, following numpy's indexing format (including advanced indexing)
+    pixels: slice, list, numpy array...
+        The pixels to use in the images, following numpy's indexing format (including advanced indexing)
 
     Example:
     --------
@@ -57,33 +50,36 @@ class Images(object):
     >>> type(i[:10])
     cats.images.Images
 
+    Examples of acceptable slicing syntax:
+    Images[0]  # Get the first frame
+    Images[0, 5:10, 10:60]  # Get the first frame, between pixels 5 and 10 in y
+                              and pixels 10 and 60 in x
+    Images[..., :256]  # Get all images, truncated in x until pixel 256
+    Images[::10]  # To get one out of ten images
+    Images[[1, 2, 3], [0, 10, 20], [15, 15, 25]]  # Get pixels with (x, y)
+                                                    positions (15, 0), (15, 10),
+                                                    (25, 20) from the second,
+                                                    third and fourth images.
+
     """
 
-    def __init__(self, images, frames=slice(None), y=slice(None), x=slice(None)):
-        """Instanciate the instance."""
+    def __init__(self, images, frames=slice(None), pixels=(slice(None), slice(None))):
+        """Instanciate the images."""
         self.base = pims.open(images) if type(images) is str else images
 
-        # Convert the limits to usable slices
-        # Frames
-        start = 0 if frames.start is None else frames.start
-        stop = len(self.base) if frames.stop is None else frames.stop
-        step = 1 if frames.step is None else frames.step
-        frames = slice(start, stop, step)
-        # x
-        start = 0 if x.start is None else x.start
-        stop = self.base[0].shape[1] if x.stop is None else x.stop
-        step = 1 if x.step is None else x.step
-        x = slice(start, stop, step)
-        # y
-        start = 0 if y.start is None else y.start
-        stop = self.base[0].shape[0] if y.stop is None else y.stop
-        step = 1 if y.step is None else y.step
-        y = slice(start, stop, step)
+        # For now, this is how we'll deal with slicing:
+        # Frames are stored as an array of the frame numbers. They can be directly sliced using advanced indexing.
+        # x and y are just going to be applied to the loaded image every time an image is loaded.
+        # In the end, all I'm doing is letting numpy deal with the slicing :)
+        self.frame_index = np.arange(len(self.base))[frames]
+        self.pixel_slice = pixels
 
-        self.slices = [frames, y, x]
-
-        # Store the path for future pickling and unpickling in a base-less context
+        # Store for future pickling and unpickling in a base-less context.
+        # These are commonly used and calculated from the base, so they are worth saving.
         self.path
+        self.shape
+        self.dtype
+        self.itemsize
 
     def __getitem__(self, items):
         """Return the slice of or whole frame(s) as requested.
@@ -92,33 +88,50 @@ class Images(object):
 
         """
         #
-        # Implement advanced indexing!
-        # For example, by checking the type of items. If list or tuple or slice, behave diferently. For exampe:
-        # if list:
-        #   return dataset[0][self.slices][items]  # First slice the image into the expected boundaries, then apply the advanced indexing.
+        # THIS IS SLOPPY!
+        # This only works when frames and pixels are separated, which may be confusing to the user...
         #
 
-        # Fix the input
+        # Deal with a single frame slice
         if type(items) is not tuple:
             items = items,
-        if len(items) < 3:
-            items = list(items) + self.slices[len(items):]
-        frame, y, x = items
 
-        # A. Only return one frame
-        if type(frame) is not slice:
-            if frame < 0:
-                frame = self.slices[0].stop + frame
-            f = self.base[frame * self.slices[0].step + self.slices[0].start][y, x].copy()
-            f.frame_no = frame
+        # Deal with an ellipsis
+        try:
+            pos = items.index(...)  # Figure out the position of the ellipsis
+            n_ellipsized = 3 - len(items) + 1  # Figure out how many dimmensions are contained in the ellipsis
+            items = items[:pos] + (slice(None), ) * n_ellipsized + items[pos + 1:]
+        except ValueError:
+            pass
+
+        # How many frames to return?
+        frames = self.frame_index[items[0]]
+        if np.isscalar(frames):
+            frames = [frames]
+
+        # No frames
+        elif len(frames) == 0:
+            return np.array([], dtype=self.dtype).view(pims.frame.Frame)
+
+        # Only return one frame
+        if len(frames) == 1:
+            frame_no = frames[0]
+            f = self.base[frame_no][self.pixel_slice][items[1:]].copy()
+            if type(f) is pims.frame.Frame:
+                f.frame_no = frame_no
             return f
 
-        # B. Return several frames as an Images object
+        # Return several frames as an Images object
         else:
-            return Images(self, frames=frame, y=y, x=x)
+            return Images(self, frames=items[0], pixels=items[1:])
 
     def __getattr__(self, attr):
-        """Return the proper error when dealing with the absence of images, i.e. the absence of the "base" attribute, and with image related attributes."""
+        """Return the requested attribute.
+
+        When dealing with the absence of images, i.e. the absence of the "base" attribute, this makes sure that an explicit error is returned.
+        It does so too with image related attributes.
+
+        """
         if attr == 'base':
             try:
                 self.reload()  # Check if the source magically reappeared first
@@ -128,11 +141,7 @@ class Images(object):
                 if hasattr(self, '_path'):
                     errormsg += " at " + self._path
                 raise FileNotFoundError(errormsg) from None
-        else:
-            try:
-                return getattr(self.base[0], attr)  # Try to get the attribute from the images themselves
-            except AttributeError:
-                raise AttributeError("{0} object has no attribute {1}".format(self.__class__, attr))
+        self.__getattribute__(attr)
 
     def __iter__(self):
         """Start iteration."""
@@ -149,7 +158,7 @@ class Images(object):
 
     @property
     def path(self):
-        """Return the path to the images."""
+        """The path to the base images."""
         if not hasattr(self, '_path'):
             t = type(self.base)
             if t is slicerator.Slicerator:
@@ -162,12 +171,35 @@ class Images(object):
 
     @property
     def shape(self):
-        """Return the shape of the frames as (y, x)."""
-        return self.slices[1].stop - self.slices[1].start, self.slices[2].stop - self.slices[2].start
+        """The shape of the object as (frame, y, x)."""
+        if not hasattr(self, '_shape'):
+            f = len(self.frame_index)
+            self._shape = (f, ) + self[0].shape
+        return self._shape
+
+    @property
+    def ndim(self):
+        """The number of dimensions."""
+        return len(self.shape)
+
+    @property
+    def dtype(self):
+        """The data type of the images."""
+        return self.base[0].dtype
+
+    @property
+    def itemsize(self):
+        """The size of one pixel, in bytes."""
+        return self.base[0].itemsize
+
+    @property
+    def size(self):
+        """The total number of pixels in the object."""
+        return np.multiply(*self.shape)
 
     def __len__(self):
         """Return the number of frames."""
-        return self.slices[0].stop - self.slices[0].start
+        return self.shape[0]
 
     def __getstate__(self):
         """Pickle the whole object, except the reader."""
@@ -201,7 +233,7 @@ class Images(object):
         Parameters:
         -----------
         folder: str
-            the folder in which the save the data. If the folder does not exist, if will be created.
+            the folder in which the save the data. If the folder does not exist, it will be created.
         prefix: format()able type
             the prefix to give to the files.
         extension: str
