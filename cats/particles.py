@@ -53,10 +53,27 @@ class Particles(pd.DataFrame):
         """Return the particle 'i' if i is an int else item i from the dataframe."""
         if type(i) is int:
             try:
-                return Particle(self[self['particle'] == i], source=self.source)
+                return Particle(self[self['particle'] == self['particle'].unique()[i]], source=self.source)
             except KeyError:
                 raise AttributeError("Particles not found. Make sure you track the features and link them together first.") from None
         return super().__getitem__(i)
+
+    def __getattr__(self, attr):
+        """Use methods and attributes from the underlying Particle bjects."""
+        try:
+            return super().__getattr__(attr)
+        except AttributeError:
+            # Get attribute from the underlying objects
+            if hasattr(Particle, attr):
+                if type(getattr(Particle, attr)) == property:
+                    return [getattr(particle, attr) for particle in self]
+                else:
+                    def all_attr(*args, **kwargs):
+                        return [getattr(particle, attr)(*args, **kwargs) for particle in self]
+                    return all_attr
+            elif any([hasattr(v, attr) for v in self]):
+                return [getattr(particle, attr, None) for particle in self]
+        return super().__getattribute__(attr)
 
     def __iter__(self):
         """Iterate over particles rather than columns."""
@@ -104,6 +121,11 @@ class Particle(pd.DataFrame):
         """Instanciate the object."""
         self.source = kwargs.pop('source', None)
         super().__init__(*args, **kwargs)
+
+    @property
+    def dwell_time(self):
+        """The number of frames this particle was observed."""
+        return self['frame'].max() - self['frame'].min()
 
 
 def from_kymogram_handtracks(tracks, dnas, channel=0, extrapolate=False):
