@@ -165,6 +165,8 @@ class Images(object):
                 self._path = self.base._ancestor.pathname  # Slicerator could do that job for us...
             elif t is Images:
                 return self.base.path
+            elif t is pims.imageio_reader.ImageIOReader:
+                return self.base.filename
             else:
                 self._path = self.base.pathname  # Pims object
         return self._path
