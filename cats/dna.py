@@ -5,12 +5,11 @@ from __future__ import absolute_import, division, print_function
 import pandas as pd
 import numpy as np
 from glob import glob
-import itertools
 import os
 import skimage.io
 import pims
 
-from cats import extensions
+from . import extensions
 import cats.utils
 import cats.images
 import cats.detect

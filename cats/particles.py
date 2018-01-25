@@ -10,7 +10,7 @@ from __future__ import absolute_import, division, print_function
 import pandas as pd
 import inspect
 
-from cats import extensions
+from . import extensions
 import cats.dna
 
 
@@ -126,60 +126,3 @@ class Particle(pd.DataFrame):
     def dwell_time(self):
         """The number of frames this particle was observed."""
         return self['frame'].max() - self['frame'].min()
-
-
-def from_kymogram_handtracks(tracks, dnas, channel=0, extrapolate=False):
-    """Transform handtracks from kymograms into a Particles object.
-
-    Kymograms are missing one dimension, the position of the DNA molecule in y. To get this information back, a dict/list of functions (1/kymogram) that give the y position for a given x must be given.
-    This function expects the coordinates to be relative to a ROI, and will transform them into the same coordinates as the DNA molecule.
-
-    Parameters:
-    -----------
-    tracks: dict
-        the handtracks as outputed by `cats.kymograms.import_handtracking`
-    dnas: dict/list
-        the DNA objects with key/index equal to the tracks' key
-    channel: int
-        the channel from which the kymogram was extracted in the DNA molecule
-    extrapolate: bool
-        whether to fill in the particle position in between the given points, using lines.
-
-    Returns:
-    --------
-    particles: dict of cats.particles.Particles objects
-        the processed particles as kymo_id: Particles
-
-    """
-    particles = dict()
-    for key, kymo_tracks in tracks.items():
-        if type(dnas[key]) != cats.dna.DNA:
-            raise ValueError("Use DNA object for reference.")
-
-        dna_particles = list()
-        p1, p2 = dnas[key].points[channel]
-
-        # Function for y
-        m = (p1[1] - p2[1]) / (p1[0] - p2[0])
-        b = p1[1] - m * p1[0]
-
-        # Direction of x
-        d = (p2[0] - p1[0]) / abs(p2[0] - p1[0])
-
-        # Offset from the ROI
-        roi_limits = dnas[key].roi[channel].slices[1]
-        rel_y = min(roi_limits.start, roi_limits.stop)
-
-        for i, track in enumerate(kymo_tracks):
-            if extrapolate:
-                ext_track = list()
-                for j in range(0, len(track) - 1):
-                    (x0, y0), (x1, y1) = track[j], track[j + 1]
-                    x_m = (y0 - y1) / (x0 - x1)
-                    x_b = y0 - x_m * x0
-                    ext_track.extend([(frame, frame * x_m + x_b) for frame in range(x0, x1)])
-                ext_track.append((x1, x1 * x_m + x_b))  # Add the last frame that was skipped by the last range.
-                track = ext_track
-            dna_particles.extend([(x, m * (p1[0] + x * d) + b - rel_y, frame, i) for frame, x in track])  # There's clearly a better way but I'm tired
-        particles[key] = Particles(dna_particles, columns=('x', 'y', 'frame', 'particle'), source=dnas[key].roi[channel])
-    return particles
