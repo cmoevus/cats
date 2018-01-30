@@ -207,7 +207,7 @@ class Images(object):
         """Pickle the whole object, except the reader."""
         # Do not pickle source images.
         blacklist = []
-        if 'pims' in str(type(self.base)):
+        if 'base' in self.__dict__ and 'pims' in str(type(self.base)):
             blacklist.append('base')
         return dict(((k, v) for k, v in self.__dict__.items() if k not in blacklist))
 

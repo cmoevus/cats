@@ -36,6 +36,12 @@ def filter_features(p, maxmass=None, max_dist_from_center=None, min_dist_from_ed
         w = p.source.shape[-1]
         p = p[np.logical_and(p['x'] >= min_dist_from_edges,
                              p['x'] <= w - min_dist_from_edges)]
+    params = {
+        'maxmass': maxmass,
+        'max_dist_from_center': max_dist_from_center,
+        'min_dist_from_edges': min_dist_from_edges
+    }
+    p._update_element_attribute('filtering_parameters', params)
     return p
 
 
@@ -87,7 +93,13 @@ def filter_particles(p, min_features=3, min_frame_ratio=0.51):
         if min_features is not None and len(particle) < min_features:
             drop = drop.union(particle.index)
 
-    return p.drop(drop, axis=0)
+    p = p.drop(drop, axis=0)
+    params = {
+        'min_features': min_features,
+        'min_frame_ratio': min_frame_ratio
+    }
+    p._update_element_attribute('filtering_parameters', params)
+    return p
 
 
 def filter_particles_old(p, min_features=3, min_frame_ratio=1 / 3):

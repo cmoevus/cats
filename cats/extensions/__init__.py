@@ -44,7 +44,7 @@ def append(clas):
     if clas.__name__ in extensions:
         for method, func in extensions[clas.__name__].items():
             setattr(clas, method, func)
-            getattr(clas, method).is_extension = True
+            # getattr(clas, method).is_extension = True
     return clas
 
 
