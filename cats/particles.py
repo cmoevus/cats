@@ -34,7 +34,7 @@ class Particles(pd.DataFrame, object):
 
     In addition, iterating over the object returns `Particle` objects.
 
-    `Particle` objects will be given the attributes listed in `Particles._element_attribute`. One can set a specific attribute by adding it to the `_element_attribute` set and creating an attribute with the same name in the `Particles` object that contains a dictionary of pairs (particle_number, value)
+    `Particle` objects will be given the attributes listed in `Particles._element_attributes`. One can set a specific attribute by adding it to the `_element_attributes` set and creating an attribute with the same name in the `Particles` object that contains a dictionary of pairs (particle_number, value)
 
     Unlike `pandas.DataFrame`, `Particles` object do not allow setting new columns
 
@@ -51,8 +51,8 @@ class Particles(pd.DataFrame, object):
 
     def __init__(self, *args, **kwargs):
         """Instanciate the object."""
-        self._element_attribute = set()
-        self._metadata = ['_element_attribute']
+        self._element_attributes = set()
+        self._metadata = ['_element_attributes']
 
         # # Get metadata from incoming DataFrame, THIS DOES NOT COPY, BUT LINK
         # if len(args) > 0 and issubclass(args[0].__class__, pd.DataFrame):
@@ -63,9 +63,9 @@ class Particles(pd.DataFrame, object):
 
         # Deal with element attributes
         expected_attributes = set(['source', 'tracking_parameters', 'filtering_parameters'])
-        user_attributes = kwargs.pop('_element_attribute', [])
-        _element_attribute = expected_attributes.union(user_attributes)
-        for attr in _element_attribute:
+        user_attributes = kwargs.pop('_element_attributes', [])
+        _element_attributes = expected_attributes.union(user_attributes)
+        for attr in _element_attributes:
             if attr in kwargs:
                 self.set_element_attribute(attr, kwargs.pop(attr))
 
@@ -85,26 +85,24 @@ class Particles(pd.DataFrame, object):
         """Bypass `pandas` annoying warnings when setting attributes."""
         object.__setattr__(self, attr, value)
 
-    # def __getattr__(self, attr):
-    #     """Use methods and attributes from the underlying Particle objects."""
-    #     # Handle properties
-    #     try:
-    #         return super().__getattribute__(attr)
-    #     # Let pandas do the work for column names
-    #     except AttributeError:
-    #         try:
-    #             return super().__getattr__(attr)
-    #         # Get attribute from the underlying objects
-    #         except AttributeError:
-    #             if hasattr(Particle, attr):
-    #                 if type(getattr(Particle, attr)) == property:
-    #                     return [getattr(particle, attr) for particle in self]
-    #                 else:
-    #                     def all_attr(*args, **kwargs):
-    #                         return [getattr(particle, attr)(*args, **kwargs) for particle in self]
-    #                     return all_attr
-    #             elif any([hasattr(v, attr) for v in self]):
-    #                 return [getattr(particle, attr, None) for particle in self]
+    def __getattr__(self, attr):
+        """Use methods and attributes from the underlying Particle objects."""
+        # Let pandas do the work for column names
+        try:
+            return super().__getattr__(attr)
+        # Get attribute from the underlying objects
+        except AttributeError:
+            if hasattr(Particle, attr):
+                if type(getattr(Particle, attr)) == property:
+                    return [getattr(particle, attr) for particle in self]
+                else:
+                    def all_attr(*args, **kwargs):
+                        return [getattr(particle, attr)(*args, **kwargs) for particle in self]
+                    return all_attr
+            elif any([hasattr(v, attr) for v in self]):
+                return [getattr(particle, attr, None) for particle in self]
+        # Handle properties
+        return super().__getattribute__(attr)
 
     def __iter__(self):
         """Iterate over particles rather than columns."""

@@ -6,10 +6,6 @@ import scipy as sp
 import numpy as np
 import pandas as pd
 
-import cats.kymograms
-import cats.particles
-import cats.detect
-
 
 def import_handtracking(track_file):
     """Transform a file of tracks manually picked from kymograms into a list.
@@ -101,6 +97,7 @@ def handtracks_to_particles(tracks, dnas, channel=None, extrapolate=False):
         the processed particles as kymo_id: Particles
 
     """
+    import cats.particles  # This cannot be imported at loading time, as this would break the loading of extensions for particles
     particles = dict()
     for key, kymo_tracks in tracks.items():
         dna_particles = list()

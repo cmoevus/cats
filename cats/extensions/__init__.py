@@ -25,6 +25,11 @@ A typical extension file will look like this:
             'method0': useless_func
         }
     }
+
+Notes:
+-----
+Extensions must not import `cats` modules that contain extendable classes at loading time. Such import must be made at call time, within the function. This is because when the extension module is loading the extensions, if one of them loads an extensible class, then this class will be loaded and decorated, and it will not receive any further extensions.
+
 """
 from __future__ import absolute_import, division, print_function
 import importlib

@@ -10,13 +10,11 @@ def dwell_time(self):
     return self['frame'].max() - self['frame'].min()
 
 
-def half_life(self, memory=10, alpha=0.05):
+def half_life(self, alpha=0.05):
     """Calculate the half-life of the particle.
 
     Parameters:
     -----------
-    memory: int
-        The max number of frames allowed between two features in a particle (as defined during tracking)
     alpha: float
         The significance level for the interval of confidence.
 
@@ -32,17 +30,15 @@ def half_life(self, memory=10, alpha=0.05):
 
 
     """
-    lambda_ = self.survival_coefficient(memory, alpha)
+    lambda_ = self.survival_coefficient(alpha)
     return 1 / lambda_
 
 
-def lifetime(self, memory=10, alpha=0.05):
+def lifetime(self, alpha=0.05):
     """Calculate the lifetime of the particle.
 
     Parameters:
     -----------
-    memory: int
-        The max number of frames allowed between two features in a particle (as defined during tracking)
     alpha: float
         The significance level for the interval of confidence.
 
@@ -58,19 +54,15 @@ def lifetime(self, memory=10, alpha=0.05):
 
 
     """
-    lambda_ = self.survival_coefficient(memory, alpha)
+    lambda_ = self.survival_coefficient(alpha)
     return 1 / lambda_
 
 
-def survival_coefficient(self, memory=10, alpha=0.05):
+def survival_coefficient(self, alpha=0.05):
     """Calculate the lifetime of the particle.
-
-    Ideally, `memory` will be obtained from the particle via InheritFromGroup class on particle.
 
     Parameters:
     -----------
-    memory: int
-        The max number of frames allowed between two features in a particle (as defined during tracking)
     alpha: float
         The significance level for the interval of confidence.
 
@@ -84,19 +76,14 @@ def survival_coefficient(self, memory=10, alpha=0.05):
     For now, all survival distributions are fitted as exponential decays. Look into the [`lifelines` library](http://lifelines.readthedocs.io/en/latest/) for more distribution and information on survival analysis.
 
     """
-    sd = self.survival_distribution(memory=10)
+    sd = self.survival_distribution()
     sd.alpha = 1 - alpha  # There an error in lifelines. They call the confidence level 'alpha'.
     values = sd.summary[['coef', 'lower {0}'.format(round(sd.alpha, 2)), 'upper {0}'.format(round(sd.alpha, 2))]].values[0]
     return values
 
 
-def survival_distribution(self, memory=10):
+def survival_distribution(self):
     """Return the survival distribution of the particles.
-
-    Parameters:
-    -----------
-    memory: int
-        The max number of frames allowed between two features in a particle (as defined during tracking)
 
     Returns
     --------
@@ -109,7 +96,7 @@ def survival_distribution(self, memory=10):
 
     """
     sd = lifelines.ExponentialFitter()
-    sd.fit([particle.dwell_time for particle in self], event_observed=[particle['frame'].max() + memory < particle.source.shape[0] for particle in self])
+    sd.fit([particle.dwell_time for particle in self], event_observed=[particle['frame'].max() + particle.tracking_parameters['memory'] < particle.source.shape[0] for particle in self])
     return sd
 
 
