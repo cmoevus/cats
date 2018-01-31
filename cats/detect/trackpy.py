@@ -5,6 +5,7 @@ import trackpy as tp
 import cats.particles
 from cats.filter.trackpy import filter_particles, filter_features, merge_particles
 
+
 def track_features(images, diameter=5, **kwargs):
     """Locate features - call them blobs, detections - in the given images.
 
@@ -24,10 +25,14 @@ def track_features(images, diameter=5, **kwargs):
 
     """
     df = tp.batch(images, diameter=diameter, **kwargs)
-    df.source = None  # Just a stoopid hack to avoid pandas' warning
-    df.source = images
     kwargs['diameter'] = diameter
-    return cats.particles.Particles(df, source=images, tracking_parameters=kwargs)
+    features = cats.particles.Particles(df)
+
+    # Set up element attributes to be added once the particles are tracked
+    features._element_attributes = {'source': images,
+                                    'tracking_parameters': kwargs}
+
+    return features
 
 
 def track_particles(df, search_range=3, memory=5, **kwargs):
@@ -51,6 +56,11 @@ def track_particles(df, search_range=3, memory=5, **kwargs):
 
     """
     ps = cats.particles.Particles(tp.link_df(df, search_range=search_range, memory=memory, **kwargs))
+
+    # Setup element attributes from Features
+    if hasattr(df, '_element_attributes') and 'particle' not in df.columns:
+        for attr, value in df._element_attributes.items():
+            ps._set_element_attribute(attr, value)
     kwargs['search_range'] = search_range
     kwargs['memory'] = memory
     ps._update_element_attribute('tracking_parameters', kwargs, ps)
@@ -102,6 +112,9 @@ def track(images, features=True, particles=True, filter_feats=True, filter_parts
             particles = filter_particles(particles, **filt_part_kwargs)
         if merge_parts:
             particles = merge_particles(particles, **merge_kwargs)
+
+        particles.renumber_particles(copy=False)  # Clean up the mess
+
     else:
         particles = features
 

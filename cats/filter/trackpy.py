@@ -28,20 +28,29 @@ def filter_features(p, maxmass=None, max_dist_from_center=None, min_dist_from_ed
     if maxmass is not None:
         p = p[p['mass'] <= maxmass]
     if max_dist_from_center is not None:
-        h = p.source.shape[-2]
+        h = p._element_attributes['source'].shape[-2] if 'particle' not in p.columns else p.source[tuple(p.source.keys()[0])].shape[-2]
         hh = int(np.floor(h / 2))
         p = p[np.logical_and(p['y'] >= hh - max_dist_from_center,
                              p['y'] <= hh + max_dist_from_center)]
     if min_dist_from_edges is not None:
-        w = p.source.shape[-1]
+        w = p._element_attributes['source'].shape[-1] if 'particle' not in p.columns else p.source[tuple(p.source.keys()[0])].shape[-1]
         p = p[np.logical_and(p['x'] >= min_dist_from_edges,
                              p['x'] <= w - min_dist_from_edges)]
+
+    # Add element attributes
     params = {
         'maxmass': maxmass,
         'max_dist_from_center': max_dist_from_center,
         'min_dist_from_edges': min_dist_from_edges
     }
-    p._update_element_attribute('filtering_parameters', params)
+    if 'particle' not in p.columns:
+        if 'filtering_parameters' not in p._element_attributes:
+            p._element_attributes['filtering_parameters'] = dict()
+        p._element_attributes['filtering_parameters'].update(params)
+    elif 'filtering_parameters' in p._element_attributes:
+        p._update_element_attribute('filtering_parameters', params)
+    else:
+        p._set_element_attribute('filtering_parameters', params)
     return p
 
 
