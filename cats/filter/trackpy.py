@@ -1,4 +1,4 @@
-# -*- coding: utf8 -*-
+# -*- coding: utf8 -*-  
 """Trackpy interface for CATS tracking."""
 from __future__ import absolute_import, division, print_function
 import numpy as np

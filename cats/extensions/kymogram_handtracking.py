@@ -89,7 +89,7 @@ def handtracks_to_particles(tracks, dnas, channel=None, extrapolate=False):
     channel: int
         the channel from which the kymogram was extracted in the DNA molecule
     extrapolate: bool
-        whether to fill in the particle position in between the given points, using lines.
+        whether to fill in the particle position in between the given points, using lines. If True, it will add a column `segment` to the dataframe, which represents which segment of the trace the feature belongs to (a segment is defined by two consecutive handpicked points).
 
     Returns:
     --------
@@ -108,9 +108,6 @@ def handtracks_to_particles(tracks, dnas, channel=None, extrapolate=False):
         p_c = dna.roi.shape[-1] / 2, dna.roi.shape[-2] / 2  # Some central reference point on the DNA molecule to get b
         b = p_c[1] - m * p_c[0]
 
-        # Direction of x
-        # d = (p2[0] - p1[0]) / abs(p2[0] - p1[0])
-
         for i, track in enumerate(kymo_tracks):
             if extrapolate:
                 ext_track = list()
@@ -118,11 +115,13 @@ def handtracks_to_particles(tracks, dnas, channel=None, extrapolate=False):
                     (x0, y0), (x1, y1) = track[j], track[j + 1]
                     x_m = (y0 - y1) / (x0 - x1)
                     x_b = y0 - x_m * x0
-                    ext_track.extend([(frame, frame * x_m + x_b) for frame in range(x0, x1)])
-                ext_track.append((x1, x1 * x_m + x_b))  # Add the last frame that was skipped by the last range.
+                    ext_track.extend([(frame, frame * x_m + x_b, j) for frame in range(x0, x1)])
+                ext_track.append((x1, x1 * x_m + x_b, j))  # Add the last frame that was skipped by the last range.
                 track = ext_track
-            dna_particles.extend([(x, m * x + b, frame, i) for frame, x in track])  # There's clearly a better way but I'm tired
-        particles[key] = cats.particles.Particles(dna_particles, columns=('x', 'y', 'frame', 'particle'), source=dnas[key].roi[channel])
+            else:
+                track = [(t[0], t[1], j) for j, t in enumerate(track[:-1])] + [(track[-1][0], track[-1][1], len(track) - 2)]
+            dna_particles.extend([(x, m * x + b, frame, i, segment) for frame, x, segment in track])  # There's clearly a better way but I'm tired
+        particles[key] = cats.particles.Particles(dna_particles, columns=('x', 'y', 'frame', 'particle', 'segment'), source=dnas[key].roi[channel], tracking_parameters={'handtracking': {'extrapolate': extrapolate}})
     return particles
 
 
@@ -149,19 +148,35 @@ def match_handtracks(particles, hand_particles, dist=2, allow_duplication=False)
     Make sure that the coordinates in the DataFrame are from the same reference as in the tracks. For example, tracking will often return values from an ROI.
 
     """
+    import cats.particles  # This cannot be imported at loading time, as this would break the loading of extensions for particles
+
     distances = sp.spatial.distance.cdist(hand_particles[['x', 'y']], particles[['x', 'y']])
     less_than_dist = distances <= dist
     same_frame = hand_particles['frame'].values[:, np.newaxis] == particles['frame'].values
     adjusted_distances = np.where(np.logical_and(less_than_dist, same_frame), distances, np.inf)
     if len(adjusted_distances) == 0:
-        return pd.DataFrame()
+        return cats.particles.Particles()
     matches = np.array([np.arange(0, len(hand_particles)), np.argmin(adjusted_distances, axis=1), np.min(adjusted_distances, axis=1)])
     valid_particles = matches[2] != np.inf
     filtered = particles.iloc[matches[1][valid_particles]].copy()
+
+    # Write down segment and particle numbers
     filtered['particle'] = hand_particles.iloc[matches[0][valid_particles]]['particle'].values
+    if 'segment' in hand_particles.columns:
+        filtered['segment'] = hand_particles.iloc[matches[0][valid_particles]]['segment'].values
+
+    # Remove duplicates
     if not allow_duplication:
         filtered = filtered[np.logical_not(filtered.duplicated(['x', 'y', 'frame']))].copy()
-    return filtered
+
+    # Update element attributes
+    if hasattr(particles, '_element_attributes') and 'particle' not in particles.columns:
+        filtered._element_attributes = {}
+        for attr, value in particles._element_attributes.items():
+            filtered._set_element_attribute(attr, value)
+    filtered._update_element_attribute('tracking_parameters', {'handtracking': {'matched': True, 'allow_duplication': allow_duplication}})
+
+    return filtered.renumber_particles()
 
 
 def import_kymogram_handtracks(self, track_files, match_particles=True, replace_particles=True, extrapolate=True, dist=2, allow_duplication=False, ignore_unmatched=True):
@@ -176,7 +191,7 @@ def import_kymogram_handtracks(self, track_files, match_particles=True, replace_
     replace_particles: bool
         If True, will replace the `particles` attribute with the handtracks. If False, will write the handtracks in the `hand_particles` attribute.
     extrapolate: bool
-        Whether to extrapolate the position on features in between two point on the track. Generally a good idea when `match_particles` is True.
+        Whether to extrapolate the position on features in between two point on the track. Generally a good idea when `match_particles` is True. If True, it will add a column `segment` to the dataframe, which represents which segment of the trace the feature belongs to (a segment is defined by two consecutive handpicked points).
     dist: int
         If `match_handtracks` is True, the maximal distance features can be from the points in the tracks or infered from the tracks.
     allow_duplication: bool
@@ -197,6 +212,8 @@ def import_kymogram_handtracks(self, track_files, match_particles=True, replace_
                         raise ValueError('If `match_particles` is True, particles must have been tracked by software and stored in each DNA object\'s `particles` attribute prior to using this function.')
                     else:
                         pass
+
+            # Write the dataframe in the DNAChannel objects.
             if replace_particles:
                 self[i][channel].particles = hand
             else:

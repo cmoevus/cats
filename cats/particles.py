@@ -107,6 +107,8 @@ class Particles(pd.DataFrame, object):
         caller = inspect.currentframe().f_back.f_code.co_name  # This is to avoid breaking the __repr__ function. There has to be a cleaner way to do this, but I don't want to rewrite __repr__ :)
         if caller == '_to_str_columns':  # This is the function __repr__ calls to get the column names
             return super().__iter__()
+        elif len(self) == 0 or 'particle' not in self.columns:
+            return [].__iter__()
         else:
             try:
                 self._iter = self.groupby('particle').__iter__()
@@ -120,10 +122,14 @@ class Particles(pd.DataFrame, object):
 
     def _set_element_attribute(self, attr, value, element=None):
         """Set the given attribute value to the elements in `element`."""
-        if element is None:
-            element = self
-        values = {i: value for i in element['particle'].unique()}
-        self._set_elements_attribute(attr, values)
+        if 'particle' in self.columns:
+            if element is None:
+                element = self
+            values = {i: value for i in element['particle'].unique()}
+            self._set_elements_attribute(attr, values)
+        #
+        # Note that elements attributes are not recorded if no particle exists, and the user doesn't know. This is terrible behavior and needs to be updated asap.
+        #
 
     def _set_elements_attribute(self, attr, values):
         """Set the given attribute to the given values for the given Particle objects.
@@ -142,13 +148,13 @@ class Particles(pd.DataFrame, object):
             self._element_attributes[attr].update(values)
 
     def _update_element_attribute(self, attr, value, element=None):
-        """Update the given element attribute `attr`, which has to be a dictionary, with dictionary `value` for all particles in element."""
+        """Update the given element attribute `attr` (which has to be a dictionary) with dictionary `value` for all particles in element."""
         if element is None:
             element = self
         try:
-            attr = self._element_attributes[attr]
+            attrib = self._element_attributes[attr]
             for i in element['particle'].unique():
-                attr[i].update(value)
+                attrib[i].update(value)
         except KeyError:
             self._set_element_attribute(attr, value, element)
 
@@ -166,11 +172,22 @@ class Particles(pd.DataFrame, object):
         e._group = self
         return e
 
-    def copy(self):
-        """Copy the DataFrame as well as its metadata."""
+    def copy(self, deep=True):
+        """Copy the DataFrame as well as its metadata.
+
+        Parameters:
+        -----------
+        copy: bool
+            Whether to perform a deep copy.
+
+        """
+        if deep:
+            copy_func = copy.deepcopy
+        else:
+            copy_func = copy.copy
         new_self = super().copy()
         for m in self._metadata:
-            setattr(new_self, m, copy.deepcopy(getattr(self, m)))
+            setattr(new_self, m, copy_func(getattr(self, m)))
         new_self._metadata = self._metadata.copy()
         return new_self
 
@@ -190,6 +207,8 @@ class Particles(pd.DataFrame, object):
 
         """
         df = self if copy is False else self.copy()
+        if 'particle' not in df.columns:
+            return df
         numbers = df['particle'].unique()
         new_numbers = range(start, start + len(numbers))
         new_element_attrs = {attr: dict() for attr in df._element_attributes}
@@ -203,12 +222,28 @@ class Particles(pd.DataFrame, object):
     @property
     def number(self):
         """The number of particles."""
-        return len(self.groupby('particle'))
+        if 'particle' in self.columns:
+            return len(self.groupby('particle'))
+        else:
+            return 0
 
     def append(self, particles):
         """Append another Particle(s) object to this one and returns it as a new object."""
         if not isinstance(particles, Particle) and not isinstance(particles, Particles):
             raise ValueError('Can only append Particles or Particle objects.')
+
+        if particles.number == 0:
+            return self.copy()
+
+        if 'particle' not in particles.columns:
+            return super().append(particles, ignore_index=True)
+
+        if 'particle' not in self.columns:
+            if len(self) == 0:
+                return particles.copy().renumber_particles()
+            else:
+                raise ValueError('Particles are not defined in the appending Particles object.')
+
         m = self['particle'].max()
         start = int(m + 1) if m > 0 else 0
         particles = particles.renumber_particles(start)
@@ -229,6 +264,8 @@ class Particle(pd.DataFrame, object):
 
     """
 
+    _metadata = ['_group']
+
     @property
     def _constructor(self):
         """Return a Particle object when manipulating."""
@@ -237,16 +274,36 @@ class Particle(pd.DataFrame, object):
     def __init__(self, *args, **kwargs):
         """Instanciate the object."""
         super().__init__(*args, **kwargs)
+        self._group = None
 
     def __getattr__(self, attr):
         """Look for attributes in group."""
-        if "_group" in self.__dict__ and attr in self._group._element_attributes:
+        if self._group is not None and attr in self._group._element_attributes:
             return self._group._get_element_attribute(attr, self)
         return super().__getattr__(attr)
 
     def __setattr__(self, attr, value):
         """Write attributes from the group in the group."""
-        if hasattr(self, "_group") and attr in self._group._element_attributes:
+        if attr != '_group' and self._group is not None and attr in self._group._element_attributes:
             self._group._set_element_attribute(attr, value, self)
         else:
             object.__setattr__(self, attr, value)
+
+    def copy(self, deep=False):
+        """Copy the DataFrame as well as its metadata.
+
+        Parameters:
+        -----------
+        copy: bool
+            Whether to perform a deep copy. Note that this will most likely lead to an error as pandas dataframes do not support deep copies.
+
+        """
+        if deep:
+            copy_func = copy.deepcopy
+        else:
+            copy_func = copy.copy
+        new_self = super().copy()
+        for m in self._metadata:
+            setattr(new_self, m, copy_func(getattr(self, m)))
+        new_self._metadata = self._metadata.copy()
+        return new_self

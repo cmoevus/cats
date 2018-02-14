@@ -410,10 +410,11 @@ class DNAChannel(cats.utils.pickle_save):
     def draw_particles(self):
         """Draw the detected particles onto the kymogram , each one with a different color."""
         kymo = self.kymogram.as_rgb()
-        for i, particle in enumerate(self.particles):
-            color = cats.colors.random()
-            xs, frames = particle['x'].values.astype(int), particle['frame'].values.astype(int)
-            kymo[xs, frames] = color
+        if hasattr(self, 'particles') and self.particles.number > 0:
+            for i, particle in enumerate(self.particles):
+                color = cats.colors.random()
+                xs, frames = particle['x'].values.astype(int), particle['frame'].values.astype(int)
+                kymo[xs, frames] = color
         return kymo
 
     def as_multichannel(self, name):
