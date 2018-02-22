@@ -77,12 +77,12 @@ class DNAs(list, cats.utils.pickle_save):
 
         Parameters:
         ----------
-        f: str
-            the CSV file
-        images: cats.images.Images
-            the images in which the DNA molecules are recorded
+        f: str or list of str
+            the CSV file(s) to import from
+        images: cats.images.Images or list of cats.images.Images
+            the images in which the DNA molecules are recorded or a list of images matched with the list of files. If just one Images object but several files, will use the images for all files.
         name: str
-            the name of the channel in the CSV file. If None, will create single-channel objects.
+            the name of the channel in the CSV file(s). If None, will create single-channel objects.
         invert_coordinates: bool
             whether to invert the coordinates in the file, so that the top of the kymogram becomes the bottom. Useful if your images have pedestals at the left and barriers at the right.
 
@@ -95,13 +95,25 @@ class DNAs(list, cats.utils.pickle_save):
         - Save with the column headers on.
 
         """
-        lines = pd.read_csv(f)
-        lines['EX'] = lines['BX'] + lines['Width']
-        lines['EY'] = lines['BY'] - lines['Height'] * lines['Angle'] / abs(lines['Angle'])
-        coords = [((r[1]['BX'], r[1]['BY']), (r[1]['EX'], r[1]['EY'])) for r in lines.astype(int).iterrows()]
-        if invert_coordinates:
-            coords = cats.dna.invert_coordinates(coords)
-        return DNAs([DNA(name, images, beg, end) if name is not None else DNA(images, beg, end) for beg, end in coords])
+        if type(f) is str:
+            f = [f]
+        if isinstance(images, cats.images.Images):
+            if len(f) > 1:
+                images = [images for i in f]
+            else:
+                images = [images]
+
+        dnas = cats.DNAs()
+        for file_, images_ in zip(f, images):
+            lines = pd.read_csv(file_)
+            lines['EX'] = lines['BX'] + lines['Width']
+            lines['EY'] = lines['BY'] - lines['Height'] * lines['Angle'] / abs(lines['Angle'])
+            coords = [((r[1]['BX'], r[1]['BY']), (r[1]['EX'], r[1]['EY'])) for r in lines.astype(int).iterrows()]
+            if invert_coordinates:
+                coords = cats.dna.invert_coordinates(coords)
+            dnas.extend([DNA(name, images_, beg, end) if name is not None else DNA(images_, beg, end) for beg, end in coords])
+
+        return dnas
 
     def add_channel(self, name, images, coordinates):
         """Add a channel to all the DNA molecules.
@@ -152,6 +164,8 @@ class DNAs(list, cats.utils.pickle_save):
         images = list()
         images_stack = dict()
         for dna in self:
+            if type(dna) == DNAChannel:
+                dna = {0: dna}
             for dna_chn in dna.values():
                 try:
                     key = images.index(dna_chn.images)
@@ -201,7 +215,7 @@ class DNA(dict, cats.utils.pickle_save):
     Parameters for channels
     ------------------------
     name: dict key compatible
-        The name of the channel
+        The name of the channel (optional if only one channel)
     images: cats.images
         The images in which the DNA molecule was recorded
     beginning: numeric 2-tuple
