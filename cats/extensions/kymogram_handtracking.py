@@ -101,7 +101,7 @@ def handtracks_to_particles(tracks, dnas, channel=None, extrapolate=False):
     particles = dict()
     for key, kymo_tracks in tracks.items():
         dna_particles = list()
-        dna = dnas[key][channel]
+        dna = dnas[key][channel] if channel is not None else dnas[key]
         p1, p2 = dna.beginning, dna.end
         # Function for y
         m = (p1[1] - p2[1]) / (p1[0] - p2[0])
@@ -121,7 +121,8 @@ def handtracks_to_particles(tracks, dnas, channel=None, extrapolate=False):
             else:
                 track = [(t[0], t[1], j) for j, t in enumerate(track[:-1])] + [(track[-1][0], track[-1][1], len(track) - 2)]
             dna_particles.extend([(x, m * x + b, frame, i, segment) for frame, x, segment in track])  # There's clearly a better way but I'm tired
-        particles[key] = cats.particles.Particles(dna_particles, columns=('x', 'y', 'frame', 'particle', 'segment'), source=dnas[key].roi[channel], tracking_parameters={'handtracking': {'extrapolate': extrapolate}})
+        source = dnas[key].roi[channel] if channel is not None else dnas[key].roi
+        particles[key] = cats.particles.Particles(dna_particles, columns=('x', 'y', 'frame', 'particle', 'segment'), source=source, tracking_parameters={'handtracking': {'extrapolate': extrapolate}})
     return particles
 
 
@@ -200,12 +201,16 @@ def import_kymogram_handtracks(self, track_files, match_particles=True, replace_
     If `match_handtracks` is True, whether to ignore the matching process if a DNA object does not have pre-tracked particles.
 
     """
+    if type(track_files) is str:
+        track_files = {None: track_files}
+
     for channel, f in track_files.items():
         hand_particles = handtracks_to_particles(import_handtracking(f), self, channel, extrapolate)
         for i, hand in hand_particles.items():
+            channel_obj = self[i][channel] if channel is not None else self[i]
             if match_particles:
                 try:
-                    particles = self[i][channel].particles
+                    particles = channel_obj.particles
                     hand = match_handtracks(particles, hand, dist, allow_duplication)
                 except AttributeError:
                     if not ignore_unmatched:
@@ -215,9 +220,9 @@ def import_kymogram_handtracks(self, track_files, match_particles=True, replace_
 
             # Write the dataframe in the DNAChannel objects.
             if replace_particles:
-                self[i][channel].particles = hand
+                channel_obj.particles = hand
             else:
-                self[i][channel].hand_particles = hand
+                channel_obj.hand_particles = hand
 
 
 _extension = {
