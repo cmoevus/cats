@@ -18,3 +18,4 @@ filter_features = detection_library.filter_features
 particles = detection_library.track_particles
 filter_particles = detection_library.filter_particles
 track = detection_library.track
+estimate_tracking_parameters = detection_library.estimate_tracking_parameters

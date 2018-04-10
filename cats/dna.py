@@ -186,6 +186,8 @@ class DNAs(list, cats.utils.pickle_save):
 
     def save_kymograms(self, folder):
         """Write kymograms for all DNA molecules in the given folder."""
+        if not os.path.exists(folder):
+            os.makedirs(folder)
         for i, dna in enumerate(self):
             if type(dna) is DNAChannel:
                 dna.kymogram.save(os.path.join(folder, '{}.tif').format(i))
@@ -195,6 +197,8 @@ class DNAs(list, cats.utils.pickle_save):
 
     def draw_particles(self, folder):
         """Draw all particles for each DNA molecules and save it in the given folder."""
+        if not os.path.exists(folder):
+            os.makedirs(folder)
         for i, dna in enumerate(self):
             if type(dna) is DNAChannel:
                 skimage.io.imsave(os.path.join(folder, '{}.tif').format(i), dna.draw_particles())
@@ -350,6 +354,40 @@ class DNA(dict, cats.utils.pickle_save):
         if f is not None:
             skimage.io.imsave(f, merge)
         return merge.view(cats.kymograms.Kymogram)
+
+    def overlay_kymograms(self, channels=None, colors=None, path=None):
+        """
+        Generate an overlay with kymograms from the given channels.
+
+        An overlay consist of the black and white version of each independent kymogram, as well as a colored overlay.
+
+        Parameters:
+        -----------
+        channels: list of str, None
+            The channels to use for the merge, in the order wanted. If None, will use all channels, sorted alphabetically.
+        colors: list of matplotlib.colors
+            The color to use for each channel. If None, will use the colors from the default color scheme `cats.colors.scheme`
+        path: str
+            The file in which to save the image. If None, only returns the merge.
+
+        Returns:
+        --------
+        overlay: np.array
+            The 8-bit RGB image of the overlay.
+
+        Notes:
+        -----
+        Kymograms in all channels must be of the same shape for this function to work.
+
+        """
+        if channels is None:
+            channels = self.channel_names
+        images = [self[c].kymogram.as_rgb() for c in channels]
+        images.append(self.merge_kymograms(channels, colors))
+        overlay = cats.images.Image(cats.images.stack_images(*images))
+        if path is not None:
+            overlay.save(path)
+        return overlay
 
 
 @extensions.append

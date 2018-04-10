@@ -6,9 +6,14 @@ import numpy as np
 import colorsys
 import warnings
 import pims
+import pims.display
 import slicerator
 import os
+import skimage
 import skimage.io
+import skimage.exposure
+import skimage.transform
+import imageio
 
 from cats import extensions
 
@@ -65,7 +70,14 @@ class Images(object):
 
     def __init__(self, images, frames=slice(None), pixels=(slice(None), slice(None))):
         """Instanciate the images."""
-        self.base = pims.open(images) if type(images) is str else images
+        if type(images) is str:
+            if os.path.isfile(images) and os.path.splitext(images)[1] in ['.tif', '.tiff']:
+                self.base = imageio.imread(images)
+                self.base.path = images
+            else:
+                self.base = pims.open(images)
+        else:
+            self.base = images
 
         # For now, this is how we'll deal with slicing:
         # Frames are stored as an array of the frame numbers. They can be directly sliced using advanced indexing.
@@ -163,10 +175,8 @@ class Images(object):
             t = type(self.base)
             if t is slicerator.Slicerator:
                 self._path = self.base._ancestor.pathname  # Slicerator could do that job for us...
-            elif t is Images:
-                return self.base.path
-            elif t is pims.imageio_reader.ImageIOReader:
-                return self.base.filename
+            elif t is Images or t is imageio.core.util.Image:
+                self._path = self.base.path
             else:
                 self._path = self.base.pathname  # Pims object
         return self._path
@@ -207,7 +217,7 @@ class Images(object):
         """Pickle the whole object, except the reader."""
         # Do not pickle source images.
         blacklist = []
-        if 'base' in self.__dict__ and 'pims' in str(type(self.base)):
+        if 'base' in self.__dict__ and not isinstance(self.base, Images):
             blacklist.append('base')
         return dict(((k, v) for k, v in self.__dict__.items() if k not in blacklist))
 
@@ -227,7 +237,11 @@ class Images(object):
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self.base = pims.open(self.path)
+                if os.path.isfile(self.path) and os.path.splitext(self.path)[1] in ['.tif', '.tiff']:
+                    self.base = imageio.imread(self.path)
+                    self.base.path = self.path
+                else:
+                    self.base = pims.open(self.path)
 
     def save(self, folder, prefix='', extension='tif'):
         """Save the images as a sequence into the given folder.
@@ -247,6 +261,84 @@ class Images(object):
         nb = np.ceil(np.log10(len(self))) if len(self) > 0 else 0
         for i, image in enumerate(self):
             skimage.io.imsave(os.path.join(folder, "{}{:0{}d}.{}".format(prefix, i, int(nb), extension)), image)
+
+    def asarray(self):
+        """Return the object as a numpy array (loaded in memory)."""
+        return np.array([i for i in self])
+
+    # def __copy__(self):
+    #     """Can not copy images."""
+    #     return self
+    #
+    # def __deepcopy__(self, memo):
+    #     """Can not copy images."""
+    #     return self
+
+
+@extensions.append
+class Image(np.ndarray):
+    """Represent one image and associated functions."""
+
+    def __new__(cls, *args, **kwargs):
+        """Create a new instance of Kymogram."""
+        if len(args) == 0 and len(kwargs) == 0:
+            args = [[]]
+        return np.array(*args, **kwargs).view(cls)
+
+    def __array_finalize__(self, obj):
+        """Save the attributes."""
+        self.display_width = 512
+
+    def as_rgb(self, rgb=(1, 1, 1)):
+        """Return the kymogram as an RGB array.
+
+        Parameters:
+        -----------
+        rgb: `matplotlib.colors.ColorConverter`-compatible color
+            The RGB color of the signal
+
+        """
+        return pims.display.to_rgb(self, rgb)
+
+    def save(self, f):
+        """Save the kymogram to the given file.
+
+        Parameters:
+        ----------
+        f: str
+            The file to save the kymogram in.
+
+        """
+        skimage.io.imsave(f, self)
+
+    def save_as_rgb(self, f, rgb=(1, 1, 1)):
+        """Save the kymogram to the given file as an 8-bit RGB image, instead of greyscale.
+
+        Parameters:
+        ----------
+        f: str
+            The file to save the kymogram in.
+        rgb: `matplotlib.colors.ColorConverter`-compatible color
+            The RGB color to give to the signal
+
+        """
+        skimage.io.imsave(f, self.as_rgb(rgb))
+
+    def _repr_png_(self):
+        """Show the kymogram in Jupyter."""
+        if len(self.shape) < 3:
+            i = self.as_rgb()
+        else:
+            i = self
+        return pims.display._as_png(i, width=self.display_width)
+
+    def rescale_intensity(self, scale):
+        """Rescale the intensity of the image to the given scale."""
+        return skimage.exposure.rescale_intensity(self, in_range=scale)
+
+    def rescale(self, scale):
+        """Rescale the image to the given size, no interpolation."""
+        return skimage.transform.rescale(self, scale, order=0)
 
 
 def stack_images(*images, spacing=2, spacing_color=255, axis=0):
@@ -361,3 +453,58 @@ def blend_rgb_images(*images):
     """
     image = np.sum(np.array(images).astype(int), axis=0)
     return image.clip(max=255).astype(np.uint8)
+
+
+def generate_registration_function(reference, relative):
+    """Generate a registration function that transforms coordinates (x, y) from a reference source into (x, y) to the relative source.
+
+    Parameters:
+    -----------
+    reference: 2-tuple
+        the coordinates (x0, y0) of the reference point
+    relative: 2-tuple
+        the coordinates (x1, y1) of the relative point
+
+    Returns:
+    --------
+    register: func
+        a function that transforms reference points into relative points
+
+    """
+    dx = relative[0] - reference[0]
+    dy = relative[1] - reference[1]
+
+    def register(x, y):
+        """Transform coordinates (x,y) of the reference into (x,y) of the relative dataset."""
+        return x + dx, y + dy
+
+    return register
+
+
+def align_channels(c1, c2, coords_c1, coords_c2):
+    """Align two channels using the given registration function.
+
+    Parameters:
+    -----------
+    c1, c2: cats.Images
+        The channels to align
+    coords_c1, coords_c2: 2-tuple of int/float
+        The coordinates of a same point in the two channels
+
+    Returns:
+    --------
+    slices: list of cats.Images
+        the two channels cropped so that they are aligned
+
+    """
+    slices = list()
+    for ref, rel, coords_ref, coords_rel in ((c1, c2, coords_c1, coords_c2), (c2, c1, coords_c2, coords_c1)):
+        orig = (0, 0)
+        end = (ref.shape[2], ref.shape[1])
+        reg = generate_registration_function(coords_rel, coords_ref)
+        rel_orig = reg(*orig)
+        rel_end = reg(*end)
+        slice_x = slice(max(orig[0], rel_orig[0]), min(end[0], rel_end[0]))
+        slice_y = slice(max(orig[1], rel_orig[1]), min(end[1], rel_end[1]))
+        slices.append(ref[:, slice_y, slice_x])
+    return slices

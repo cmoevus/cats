@@ -2,6 +2,8 @@
 """Trackpy interface for CATS tracking."""
 from __future__ import absolute_import, division, print_function
 import trackpy as tp
+import numpy as np
+import itertools
 import cats.particles
 from cats.filter.trackpy import filter_particles, filter_features, merge_particles
 
@@ -119,3 +121,27 @@ def track(images, features=True, particles=True, filter_feats=True, filter_parts
         particles = features
 
     return particles
+
+
+def estimate_tracking_parameters(images, diameter=range(3, 8, 2), smoothing_size=range(2, 4), noise_size=np.arange(0.6, 0.99, 0.02)):
+    """Estimate the tracking parameters for the given images.
+
+    Parameters:
+    -----------
+    images: cats.Images
+        The images to track from. Usually, a subset is sufficient (about a few hundred features).
+    diameter: list
+        Potential values for the `diameter` parameter of the `trackpy.locate` function.
+    smoothing_size: list
+        Potential values for the `smoothing_size` parameter of the `trackpy.locate` function.
+    noise_size: list
+        Potential values for the `noise_size` parameter of the `trackpy.locate` function.
+
+    """
+    scores = list()
+    for i, (d, ss, ns) in enumerate(itertools.product(diameter, smoothing_size, noise_size)):
+        feats = cats.detect.features(images, diameter=d, smoothing_size=ss, noise_size=ns)
+        score = np.mean([np.var(np.histogram([x - np.int(x) for x in feats['y']])[0]), np.var(np.histogram([x - np.int(x) for x in feats['x']])[0])])
+        if score > 0:
+            scores.append((('diameter', d), ('smoothing_size', ss), ('noise_size', ns), score))
+    return dict(sorted(scores, key=lambda x: x[3])[0][:3])

@@ -298,10 +298,10 @@ class Particle(pd.DataFrame, object):
             Whether to perform a deep copy. Note that this will most likely lead to an error as pandas dataframes do not support deep copies.
 
         """
-        if deep:
-            copy_func = copy.deepcopy
-        else:
+        if not deep:
             copy_func = copy.copy
+        else:
+            copy_func = copy.deepcopy
         new_self = super().copy()
         for m in self._metadata:
             setattr(new_self, m, copy_func(getattr(self, m)))

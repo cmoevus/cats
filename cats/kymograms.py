@@ -5,12 +5,13 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import skimage
 import skimage.draw
-import pims.display
+import cats.images
+
 from . import extensions
 
 
 @extensions.append
-class Kymogram(np.ndarray):
+class Kymogram(cats.images.Image):
     """Create and handle a kymogram.
 
     A kymogram is a displacement plot built with raw data. It is a projection of a given axis along time.
@@ -59,56 +60,3 @@ class Kymogram(np.ndarray):
         """
         a = [image[s] for image in images]
         return np.array(a, dtype=images.dtype).T.view(Kymogram)
-
-    def __new__(cls, *args, **kwargs):
-        """Create a new instance of Kymogram."""
-        if len(args) == 0 and len(kwargs) == 0:
-            args = [[]]
-        return np.array(*args, **kwargs).view(cls)
-
-    def __array_finalize__(self, obj):
-        """Save the attributes."""
-        self.display_width = 512
-
-    def as_rgb(self, rgb=(1, 1, 1)):
-        """Return the kymogram as an RGB array.
-
-        Parameters:
-        -----------
-        rgb: `matplotlib.colors.ColorConverter`-compatible color
-            The RGB color of the signal
-
-        """
-        return pims.display.to_rgb(self, rgb)
-
-    def save(self, f):
-        """Save the kymogram to the given file.
-
-        Parameters:
-        ----------
-        f: str
-            The file to save the kymogram in.
-
-        """
-        skimage.io.imsave(f, self)
-
-    def save_as_rgb(self, f, rgb=(1, 1, 1)):
-        """Save the kymogram to the given file as an 8-bit RGB image, instead of greyscale.
-
-        Parameters:
-        ----------
-        f: str
-            The file to save the kymogram in.
-        rgb: `matplotlib.colors.ColorConverter`-compatible color
-            The RGB color to give to the signal
-
-        """
-        skimage.io.imsave(f, self.as_rgb(rgb))
-
-    def _repr_png_(self):
-        """Show the kymogram in Jupyter."""
-        if len(self.shape) < 3:
-            i = self.as_rgb()
-        else:
-            i = self
-        return pims.display._as_png(i, width=self.display_width)
