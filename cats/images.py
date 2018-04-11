@@ -243,7 +243,7 @@ class Images(object):
                 else:
                     self.base = pims.open(self.path)
 
-    def save(self, folder, prefix='', extension='tif'):
+    def save(self, folder, prefix='', start_value=0, extension='tif'):
         """Save the images as a sequence into the given folder.
 
         Parameters:
@@ -252,6 +252,8 @@ class Images(object):
             the folder in which the save the data. If the folder does not exist, it will be created.
         prefix: format()able type
             the prefix to give to the files.
+        start_value: int
+            The number of the first frame
         extension: str
             the file extension. It has to be an extension writable by skimage.io.imsave
 
@@ -260,7 +262,7 @@ class Images(object):
             os.makedirs(folder)
         nb = np.ceil(np.log10(len(self))) if len(self) > 0 else 0
         for i, image in enumerate(self):
-            skimage.io.imsave(os.path.join(folder, "{}{:0{}d}.{}".format(prefix, i, int(nb), extension)), image)
+            skimage.io.imsave(os.path.join(folder, "{}{:0{}d}.{}".format(prefix, i + start_value, int(nb), extension)), image)
 
     def asarray(self):
         """Return the object as a numpy array (loaded in memory)."""
