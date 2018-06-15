@@ -123,7 +123,7 @@ def track(images, features=True, particles=True, filter_feats=True, filter_parts
     return particles
 
 
-def estimate_tracking_parameters(images, diameter=range(3, 8, 2), smoothing_size=range(2, 4), noise_size=np.arange(0.6, 0.99, 0.02)):
+def estimate_tracking_parameters(images, diameter=range(3, 8, 2), smoothing_size=range(1, 5, 2), noise_size=np.arange(0.6, 0.99, 0.02)):
     """Estimate the tracking parameters for the given images.
 
     Parameters:

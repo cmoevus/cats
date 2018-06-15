@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 import lifelines
-
+import numpy as np
 
 @property
 def dwell_time(self):
@@ -31,7 +31,7 @@ def half_life(self, alpha=0.05):
 
     """
     lambda_ = self.survival_coefficient(alpha)
-    return 1 / lambda_
+    return np.log(2) / lambda_
 
 
 def lifetime(self, alpha=0.05):

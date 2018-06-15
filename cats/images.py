@@ -336,11 +336,11 @@ class Image(np.ndarray):
 
     def rescale_intensity(self, scale):
         """Rescale the intensity of the image to the given scale."""
-        return skimage.exposure.rescale_intensity(self, in_range=scale)
+        return skimage.exposure.rescale_intensity(self, in_range=scale).view(Image)
 
     def rescale(self, scale):
-        """Rescale the image to the given size, no interpolation."""
-        return skimage.transform.rescale(self, scale, order=0)
+        """Rescale the image to the given scale, no interpolation."""
+        return skimage.transform.rescale(self, scale, order=0, preserve_range=True).astype(self.dtype).view(Image)
 
 
 def stack_images(*images, spacing=2, spacing_color=255, axis=0):
@@ -506,7 +506,7 @@ def align_channels(c1, c2, coords_c1, coords_c2):
         reg = generate_registration_function(coords_rel, coords_ref)
         rel_orig = reg(*orig)
         rel_end = reg(*end)
-        slice_x = slice(max(orig[0], rel_orig[0]), min(end[0], rel_end[0]))
-        slice_y = slice(max(orig[1], rel_orig[1]), min(end[1], rel_end[1]))
+        slice_x = slice(max(orig[0], rel_orig[0]), min(end[0], rel_end[0], rel.shape[2]))
+        slice_y = slice(max(orig[1], rel_orig[1]), min(end[1], rel_end[1], rel.shape[1]))
         slices.append(ref[:, slice_y, slice_x])
     return slices
