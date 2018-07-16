@@ -3,6 +3,7 @@
 from __future__ import absolute_import, division, print_function
 import lifelines
 import numpy as np
+import pandas as pd
 
 @property
 def dwell_time(self):
@@ -100,6 +101,16 @@ def survival_distribution(self):
     return sd
 
 
+def survival_events(self):
+    """Return a data frame of the survival events that will be used for making distributions.
+    
+    Returns
+    -------
+    events: pd.DataFrame
+        The events dwell times and whether they ended within the observation window.
+    """
+    return pd.DataFrame([(particle.dwell_time, particle['frame'].max() + particle.tracking_parameters['memory'] < particle.source.shape[0]) for particle in self], columns=['dwell_time', 'end_observed'])
+
 _extension = {
     'Particle': {
         'dwell_time': dwell_time
@@ -108,6 +119,7 @@ _extension = {
         'survival_distribution': survival_distribution,
         'survival_coefficient': survival_coefficient,
         'lifetime': lifetime,
-        'half_life': half_life
+        'half_life': half_life,
+        'survival_events': survival_events
     }
 }

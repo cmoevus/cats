@@ -65,9 +65,11 @@ def import_handtracking(track_file):
                 t = list()
                 for feature in track.split('\n'):
                     positions = feature.split('\t')
-                    if len(positions) > 2:
-                        t.append((int(math.floor(float(positions[1]))), float(positions[2])))
-                    elif len(positions) > 1:
+#                    if len(positions) > 2:
+#                        t.append((int(math.floor(float(positions[1]))), float(positions[2])))
+#                    elif len(positions) > 1:
+#                        t.append((int(math.floor(float(positions[0]))), float(positions[1])))
+                    if len(positions) > 1:
                         t.append((int(math.floor(float(positions[0]))), float(positions[1])))
                 if len(track) > 2:
                     tracks[kymo_id].append(t)
